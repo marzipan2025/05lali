@@ -307,7 +307,7 @@ final class SettingsPreviewView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        let clipPath = NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10)
+        let clipPath = NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18)
 
         NSGraphicsContext.current?.saveGraphicsState()
         clipPath.addClip()
@@ -315,7 +315,7 @@ final class SettingsPreviewView: NSView {
         if let image = backgroundImage {
             image.draw(in: aspectFillImageRect(), from: .zero, operation: .sourceOver, fraction: 1.0)
         } else {
-            NSColor(calibratedWhite: 0.92, alpha: 1).setFill()
+            NSColor(calibratedWhite: 0.2, alpha: 1).setFill()
             bounds.fill()
         }
 
@@ -746,14 +746,14 @@ final class ColorSwatchButton: NSButton {
     init(swatchID: String, swatchDraw: @escaping (NSRect) -> Void) {
         self.swatchID = swatchID
         self.swatchDraw = swatchDraw
-        super.init(frame: NSRect(x: 0, y: 0, width: 28, height: 28))
+        super.init(frame: NSRect(x: 0, y: 0, width: 32, height: 32))
         title = ""
         isBordered = false
         setButtonType(.momentaryChange)
         translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 28),
-            heightAnchor.constraint(equalToConstant: 28)
+            widthAnchor.constraint(equalToConstant: 32),
+            heightAnchor.constraint(equalToConstant: 32)
         ])
     }
 
@@ -763,14 +763,22 @@ final class ColorSwatchButton: NSButton {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let swatchRect = bounds.insetBy(dx: 3, dy: 3)
+        let baseRect = bounds.insetBy(dx: 1, dy: 1)
+        let basePath = NSBezierPath(ovalIn: baseRect)
+        SettingsStyle.panelBackground.setFill()
+        basePath.fill()
+        SettingsStyle.swatchBorder.setStroke()
+        basePath.lineWidth = 1
+        basePath.stroke()
+
+        let swatchRect = bounds.insetBy(dx: 5, dy: 5)
         swatchDraw(swatchRect)
 
         if isSelected {
-            let ringRect = bounds.insetBy(dx: 1, dy: 1)
+            let ringRect = bounds.insetBy(dx: 3, dy: 3)
             let ring = NSBezierPath(ovalIn: ringRect)
-            ring.lineWidth = 2
-            NSColor.controlAccentColor.setStroke()
+            ring.lineWidth = 1.5
+            SettingsStyle.swatchSelection.setStroke()
             ring.stroke()
         }
     }
@@ -794,8 +802,8 @@ final class ColorSwatchButton: NSButton {
                 NSColor(calibratedWhite: 0.22, alpha: 1).setFill()
                 triangle.fill()
                 NSGraphicsContext.current?.restoreGraphicsState()
-                NSColor.separatorColor.setStroke()
-                path.lineWidth = 0.5
+                SettingsStyle.swatchBorder.setStroke()
+                path.lineWidth = 1
                 path.stroke()
             }
         }
@@ -805,14 +813,30 @@ final class ColorSwatchButton: NSButton {
     }
 }
 
+private enum SettingsStyle {
+    static let windowBackground = NSColor(calibratedWhite: 0.11, alpha: 1.0)
+    static let panelBackground = NSColor(calibratedWhite: 0.14, alpha: 1.0)
+    static let panelStroke = NSColor.white.withAlphaComponent(0.08)
+    static let divider = NSColor.white.withAlphaComponent(0.08)
+    static let secondaryText = NSColor(calibratedWhite: 0.74, alpha: 1.0)
+    static let swatchBorder = NSColor.white.withAlphaComponent(0.14)
+    static let swatchSelection = NSColor.white.withAlphaComponent(0.9)
+    static let destructiveAccent = NSColor.systemRed
+    static let panelCornerRadius: CGFloat = 12
+    static let previewCornerRadius: CGFloat = 18
+}
+
 final class SettingsViewController: NSViewController {
     private let overlayController: OverlayController
     private let previewView = SettingsPreviewView()
     private var opacitySlider: NSSlider!
     private var thicknessSlider: NSSlider!
     private var colorButtons: [ColorSwatchButton] = []
-    private var lineBox: NSBox!
-    private var colorBox: NSBox!
+    private var lineSection: NSView!
+    private var colorSection: NSView!
+    private var resetActionButton: NSButton!
+    private var resetConfirmButton: NSButton!
+    private var isResetConfirmationVisible = false
 
     init(overlayController: OverlayController) {
         self.overlayController = overlayController
@@ -826,30 +850,34 @@ final class SettingsViewController: NSViewController {
 
     override func loadView() {
         let rootView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 500))
+        rootView.wantsLayer = true
+        rootView.layer?.backgroundColor = SettingsStyle.windowBackground.cgColor
 
         previewView.translatesAutoresizingMaskIntoConstraints = false
         previewView.wantsLayer = true
+        previewView.layer?.cornerRadius = SettingsStyle.previewCornerRadius
+        previewView.layer?.cornerCurve = .continuous
+        previewView.layer?.borderWidth = 1
+        previewView.layer?.borderColor = SettingsStyle.panelStroke.cgColor
 
-        lineBox = makeLineGroup()
-        colorBox = makeColorGroup()
+        lineSection = makeLineGroup()
+        colorSection = makeColorGroup()
 
-        let groupsStack = NSStackView(views: [lineBox, colorBox])
+        let groupsStack = NSStackView(views: [lineSection, colorSection])
         groupsStack.orientation = .vertical
         groupsStack.alignment = .leading
-        groupsStack.spacing = 10
+        groupsStack.spacing = 18
         groupsStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let resetButton = NSButton(title: "Reset All Settings", target: self, action: #selector(resetAllTapped(_:)))
-        resetButton.bezelStyle = .rounded
-        resetButton.hasDestructiveAction = true
-        resetButton.translatesAutoresizingMaskIntoConstraints = false
+        let resetSection = makeResetSection()
+        resetSection.translatesAutoresizingMaskIntoConstraints = false
 
         rootView.addSubview(previewView)
         rootView.addSubview(groupsStack)
-        rootView.addSubview(resetButton)
+        rootView.addSubview(resetSection)
 
         NSLayoutConstraint.activate([
-            previewView.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 20),
+            previewView.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 18),
             previewView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 20),
             previewView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
             previewView.heightAnchor.constraint(equalToConstant: 210),
@@ -858,21 +886,23 @@ final class SettingsViewController: NSViewController {
             groupsStack.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 20),
             groupsStack.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
 
-            lineBox.leadingAnchor.constraint(equalTo: groupsStack.leadingAnchor),
-            lineBox.trailingAnchor.constraint(equalTo: groupsStack.trailingAnchor),
-            colorBox.leadingAnchor.constraint(equalTo: groupsStack.leadingAnchor),
-            colorBox.trailingAnchor.constraint(equalTo: groupsStack.trailingAnchor),
+            lineSection.leadingAnchor.constraint(equalTo: groupsStack.leadingAnchor),
+            lineSection.trailingAnchor.constraint(equalTo: groupsStack.trailingAnchor),
+            colorSection.leadingAnchor.constraint(equalTo: groupsStack.leadingAnchor),
+            colorSection.trailingAnchor.constraint(equalTo: groupsStack.trailingAnchor),
 
-            resetButton.topAnchor.constraint(equalTo: groupsStack.bottomAnchor, constant: 20),
-            resetButton.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 20),
-            resetButton.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -20)
+            resetSection.topAnchor.constraint(equalTo: groupsStack.bottomAnchor, constant: 22),
+            resetSection.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 20),
+            resetSection.trailingAnchor.constraint(lessThanOrEqualTo: rootView.trailingAnchor, constant: -20),
+            resetSection.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -20)
         ])
 
         self.view = rootView
+        updateResetButtons()
         refreshFromSettings()
     }
 
-    private func makeLineGroup() -> NSBox {
+    private func makeLineGroup() -> NSView {
         let opacitySliderControl = NSSlider(
             value: 0.5,
             minValue: AppConstants.minimumDisplayedOpacity,
@@ -905,6 +935,8 @@ final class SettingsViewController: NSViewController {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(opacityRow)
+        let divider = makeDivider()
+        container.addSubview(divider)
         container.addSubview(thicknessRow)
 
         NSLayoutConstraint.activate([
@@ -912,16 +944,21 @@ final class SettingsViewController: NSViewController {
             opacityRow.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             opacityRow.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
-            thicknessRow.topAnchor.constraint(equalTo: opacityRow.bottomAnchor),
+            divider.topAnchor.constraint(equalTo: opacityRow.bottomAnchor),
+            divider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            divider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            divider.heightAnchor.constraint(equalToConstant: 1),
+
+            thicknessRow.topAnchor.constraint(equalTo: divider.bottomAnchor),
             thicknessRow.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             thicknessRow.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             thicknessRow.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
 
-        return makeGroupBox(containing: container)
+        return makeSection(title: "Line", containing: container)
     }
 
-    private func makeColorGroup() -> NSBox {
+    private func makeColorGroup() -> NSView {
         colorButtons = LineColorOption.allCases.map { option in
             ColorSwatchButton.make(option: option, target: self, action: #selector(colorTapped(_:)))
         }
@@ -947,7 +984,7 @@ final class SettingsViewController: NSViewController {
             colorRow.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
 
-        return makeGroupBox(containing: container)
+        return makeSection(title: "Color", containing: container)
     }
 
     private func makeRow(label text: String, control: NSView, controlWidth: CGFloat?) -> NSView {
@@ -961,12 +998,12 @@ final class SettingsViewController: NSViewController {
         control.translatesAutoresizingMaskIntoConstraints = false
 
         var constraints: [NSLayoutConstraint] = [
-            row.heightAnchor.constraint(equalToConstant: 48),
+            row.heightAnchor.constraint(equalToConstant: 52),
 
-            label.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
             label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
 
-            control.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -16),
             control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             control.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12)
         ]
@@ -980,29 +1017,102 @@ final class SettingsViewController: NSViewController {
     private func makeRowLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         label.alignment = .left
-        label.font = .systemFont(ofSize: NSFont.systemFontSize)
+        label.font = .systemFont(ofSize: 14, weight: .regular)
+        label.textColor = .white
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentHuggingPriority(.required, for: .horizontal)
         return label
     }
 
-    private func makeGroupBox(containing subview: NSView) -> NSBox {
-        let box = NSBox()
-        box.boxType = .primary
-        box.titlePosition = .noTitle
-        box.contentViewMargins = NSSize(width: 16, height: 14)
-        box.translatesAutoresizingMaskIntoConstraints = false
+    private func makeSection(title: String, containing subview: NSView) -> NSView {
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        titleLabel.textColor = SettingsStyle.secondaryText
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        guard let content = box.contentView else { return box }
-        content.addSubview(subview)
+        let panel = NSView()
+        panel.wantsLayer = true
+        panel.layer?.backgroundColor = SettingsStyle.panelBackground.cgColor
+        panel.layer?.cornerRadius = SettingsStyle.panelCornerRadius
+        panel.layer?.cornerCurve = .continuous
+        panel.layer?.borderWidth = 1
+        panel.layer?.borderColor = SettingsStyle.panelStroke.cgColor
+        panel.translatesAutoresizingMaskIntoConstraints = false
+
+        panel.addSubview(subview)
         subview.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            subview.topAnchor.constraint(equalTo: content.topAnchor),
-            subview.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            subview.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            subview.trailingAnchor.constraint(equalTo: content.trailingAnchor)
+            subview.topAnchor.constraint(equalTo: panel.topAnchor, constant: 2),
+            subview.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -2),
+            subview.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            subview.trailingAnchor.constraint(equalTo: panel.trailingAnchor)
         ])
-        return box
+
+        let section = NSStackView(views: [titleLabel, panel])
+        section.orientation = .vertical
+        section.alignment = .leading
+        section.spacing = 10
+        section.translatesAutoresizingMaskIntoConstraints = false
+        return section
+    }
+
+    private func makeDivider() -> NSView {
+        let divider = NSView()
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = SettingsStyle.divider.cgColor
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        return divider
+    }
+
+    private func makeResetSection() -> NSView {
+        let descriptionLabel = NSTextField(wrappingLabelWithString: "This will permanently reset line opacity, line thickness, line color, and all saved grid layouts. It cannot be undone.")
+        descriptionLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        descriptionLabel.textColor = SettingsStyle.secondaryText
+        descriptionLabel.maximumNumberOfLines = 0
+        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        resetActionButton = makeFooterButton(title: "Reset Everything", backgroundColor: NSColor.white.withAlphaComponent(0.08), foregroundColor: .white, borderColor: SettingsStyle.panelStroke)
+        resetActionButton.target = self
+        resetActionButton.action = #selector(toggleResetConfirmation(_:))
+
+        resetConfirmButton = makeFooterButton(title: "Are you sure?", backgroundColor: SettingsStyle.destructiveAccent, foregroundColor: .white, borderColor: nil)
+        resetConfirmButton.target = self
+        resetConfirmButton.action = #selector(confirmResetAll(_:))
+
+        let buttonsStack = NSStackView(views: [resetActionButton, resetConfirmButton])
+        buttonsStack.orientation = .horizontal
+        buttonsStack.alignment = .centerY
+        buttonsStack.spacing = 10
+        buttonsStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = NSStackView(views: [descriptionLabel, buttonsStack])
+        container.orientation = .vertical
+        container.alignment = .leading
+        container.spacing = 16
+        container.translatesAutoresizingMaskIntoConstraints = false
+        return container
+    }
+
+    private func makeFooterButton(title: String, backgroundColor: NSColor, foregroundColor: NSColor, borderColor: NSColor?) -> NSButton {
+        let button = NSButton(title: title, target: nil, action: nil)
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.contentTintColor = foregroundColor
+        button.font = .systemFont(ofSize: 13, weight: .medium)
+        button.wantsLayer = true
+        button.layer?.backgroundColor = backgroundColor.cgColor
+        button.layer?.cornerRadius = 10
+        button.layer?.cornerCurve = .continuous
+        button.layer?.borderWidth = borderColor == nil ? 0 : 1
+        button.layer?.borderColor = borderColor?.cgColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        return button
+    }
+
+    private func updateResetButtons() {
+        resetActionButton.title = isResetConfirmationVisible ? "Cancel" : "Reset Everything"
+        resetConfirmButton.isHidden = !isResetConfirmationVisible
     }
 
     private func refreshFromSettings() {
@@ -1050,9 +1160,15 @@ final class SettingsViewController: NSViewController {
         }
     }
 
+    @objc private func toggleResetConfirmation(_ sender: NSButton) {
+        isResetConfirmationVisible.toggle()
+        updateResetButtons()
+    }
 
-    @objc private func resetAllTapped(_ sender: NSButton) {
+    @objc private func confirmResetAll(_ sender: NSButton) {
         overlayController.resetAll()
+        isResetConfirmationVisible = false
+        updateResetButtons()
         refreshFromSettings()
     }
 }
@@ -1070,6 +1186,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         window.center()
         window.title = "Settings"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = SettingsStyle.windowBackground
+        if #available(macOS 11.0, *) {
+            window.titlebarSeparatorStyle = .none
+        }
         window.contentViewController = settingsViewController
         window.isReleasedWhenClosed = false
 
