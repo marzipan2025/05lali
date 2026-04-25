@@ -14,7 +14,10 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "GridOverlay"
+            name: "GridOverlay",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )

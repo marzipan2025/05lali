@@ -31,6 +31,20 @@ private enum AppConstants {
     static let normalAdaptiveColor = NSColor.white.withAlphaComponent(0.92)
 }
 
+private func bundledResourceURL(
+    candidateNames: [String],
+    withExtension fileExtension: String
+) -> URL? {
+    for bundle in [Bundle.main, Bundle.module] {
+        for name in candidateNames {
+            if let url = bundle.url(forResource: name, withExtension: fileExtension) {
+                return url
+            }
+        }
+    }
+    return nil
+}
+
 private func drawEditHandleStripes(
     in context: CGContext,
     bandRect: NSRect,
@@ -295,8 +309,8 @@ final class SettingsPreviewView: NSView {
     }
 
     private let backgroundImage: NSImage? = {
-        guard let url = Bundle.main.url(
-            forResource: AppConstants.settingsPreviewResourceName,
+        guard let url = bundledResourceURL(
+            candidateNames: [AppConstants.settingsPreviewResourceName],
             withExtension: AppConstants.settingsPreviewResourceExtension
         ) else { return nil }
         return NSImage(contentsOf: url)
@@ -315,7 +329,7 @@ final class SettingsPreviewView: NSView {
         if let image = backgroundImage {
             image.draw(in: aspectFillImageRect(), from: .zero, operation: .sourceOver, fraction: 1.0)
         } else {
-            NSColor(calibratedWhite: 0.2, alpha: 1).setFill()
+            NSColor(calibratedWhite: 0.88, alpha: 1).setFill()
             bounds.fill()
         }
 
@@ -353,7 +367,7 @@ final class SettingsPreviewView: NSView {
 
     private func drawLine(in context: CGContext, from start: CGPoint, to end: CGPoint) {
         let opacity = CGFloat(settings.opacity)
-        let lineWidth = CGFloat(settings.lineWidth)
+        let lineWidth = CGFloat(settings.lineWidth) * 0.6
         let option = LineColorOption.from(id: settings.lineColorID)
 
         if let solidColor = option.nsColor {
@@ -814,13 +828,14 @@ final class ColorSwatchButton: NSButton {
 }
 
 private enum SettingsStyle {
-    static let windowBackground = NSColor(calibratedWhite: 0.11, alpha: 1.0)
-    static let panelBackground = NSColor(calibratedWhite: 0.14, alpha: 1.0)
-    static let panelStroke = NSColor.white.withAlphaComponent(0.08)
-    static let divider = NSColor.white.withAlphaComponent(0.08)
-    static let secondaryText = NSColor(calibratedWhite: 0.74, alpha: 1.0)
-    static let swatchBorder = NSColor.white.withAlphaComponent(0.14)
-    static let swatchSelection = NSColor.white.withAlphaComponent(0.9)
+    static let windowBackground = NSColor(calibratedWhite: 0.965, alpha: 1.0)
+    static let panelBackground = NSColor(calibratedWhite: 0.94, alpha: 1.0)
+    static let panelStroke = NSColor.black.withAlphaComponent(0.08)
+    static let divider = NSColor.black.withAlphaComponent(0.08)
+    static let primaryText = NSColor(calibratedWhite: 0.16, alpha: 1.0)
+    static let secondaryText = NSColor(calibratedWhite: 0.38, alpha: 1.0)
+    static let swatchBorder = NSColor.black.withAlphaComponent(0.14)
+    static let swatchSelection = NSColor.black.withAlphaComponent(0.72)
     static let destructiveAccent = NSColor.systemRed
     static let panelCornerRadius: CGFloat = 12
     static let previewCornerRadius: CGFloat = 18
@@ -836,6 +851,8 @@ final class SettingsViewController: NSViewController {
     private var colorSection: NSView!
     private var resetActionButton: NSButton!
     private var resetConfirmButton: NSButton!
+    private var resetActionButtonWidthConstraint: NSLayoutConstraint?
+    private var resetConfirmButtonWidthConstraint: NSLayoutConstraint?
     private var isResetConfirmationVisible = false
 
     init(overlayController: OverlayController) {
@@ -849,9 +866,14 @@ final class SettingsViewController: NSViewController {
     }
 
     override func loadView() {
-        let rootView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 500))
+        let rootView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 552))
         rootView.wantsLayer = true
         rootView.layer?.backgroundColor = SettingsStyle.windowBackground.cgColor
+
+        let titleLabel = NSTextField(labelWithString: "Settings")
+        titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        titleLabel.textColor = SettingsStyle.primaryText
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         previewView.translatesAutoresizingMaskIntoConstraints = false
         previewView.wantsLayer = true
@@ -872,12 +894,17 @@ final class SettingsViewController: NSViewController {
         let resetSection = makeResetSection()
         resetSection.translatesAutoresizingMaskIntoConstraints = false
 
+        rootView.addSubview(titleLabel)
         rootView.addSubview(previewView)
         rootView.addSubview(groupsStack)
         rootView.addSubview(resetSection)
 
         NSLayoutConstraint.activate([
-            previewView.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 18),
+            titleLabel.topAnchor.constraint(equalTo: rootView.safeAreaLayoutGuide.topAnchor, constant: 12),
+            titleLabel.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: rootView.trailingAnchor, constant: -20),
+
+            previewView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
             previewView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 20),
             previewView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
             previewView.heightAnchor.constraint(equalToConstant: 210),
@@ -1018,7 +1045,7 @@ final class SettingsViewController: NSViewController {
         let label = NSTextField(labelWithString: text)
         label.alignment = .left
         label.font = .systemFont(ofSize: 14, weight: .regular)
-        label.textColor = .white
+        label.textColor = SettingsStyle.primaryText
         label.translatesAutoresizingMaskIntoConstraints = false
         label.setContentHuggingPriority(.required, for: .horizontal)
         return label
@@ -1071,13 +1098,17 @@ final class SettingsViewController: NSViewController {
         descriptionLabel.maximumNumberOfLines = 0
         descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        resetActionButton = makeFooterButton(title: "Reset Everything", backgroundColor: NSColor.white.withAlphaComponent(0.08), foregroundColor: .white, borderColor: SettingsStyle.panelStroke)
+        resetActionButton = makeFooterButton(title: "Reset Settings", backgroundColor: NSColor(calibratedWhite: 0.985, alpha: 1.0), foregroundColor: SettingsStyle.primaryText, borderColor: SettingsStyle.panelStroke)
         resetActionButton.target = self
         resetActionButton.action = #selector(toggleResetConfirmation(_:))
+        resetActionButtonWidthConstraint = resetActionButton.widthAnchor.constraint(equalToConstant: footerButtonWidth(for: resetActionButton.title))
+        resetActionButtonWidthConstraint?.isActive = true
 
         resetConfirmButton = makeFooterButton(title: "Are you sure?", backgroundColor: SettingsStyle.destructiveAccent, foregroundColor: .white, borderColor: nil)
         resetConfirmButton.target = self
         resetConfirmButton.action = #selector(confirmResetAll(_:))
+        resetConfirmButtonWidthConstraint = resetConfirmButton.widthAnchor.constraint(equalToConstant: footerButtonWidth(for: resetConfirmButton.title))
+        resetConfirmButtonWidthConstraint?.isActive = true
 
         let buttonsStack = NSStackView(views: [resetActionButton, resetConfirmButton])
         buttonsStack.orientation = .horizontal
@@ -1099,6 +1130,7 @@ final class SettingsViewController: NSViewController {
         button.bezelStyle = .regularSquare
         button.contentTintColor = foregroundColor
         button.font = .systemFont(ofSize: 13, weight: .medium)
+        button.alignment = .center
         button.wantsLayer = true
         button.layer?.backgroundColor = backgroundColor.cgColor
         button.layer?.cornerRadius = 10
@@ -1106,12 +1138,21 @@ final class SettingsViewController: NSViewController {
         button.layer?.borderWidth = borderColor == nil ? 0 : 1
         button.layer?.borderColor = borderColor?.cgColor
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.setContentHuggingPriority(.required, for: .horizontal)
         button.heightAnchor.constraint(equalToConstant: 32).isActive = true
         return button
     }
 
+    private func footerButtonWidth(for title: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let textWidth = ceil((title as NSString).size(withAttributes: [.font: font]).width)
+        return textWidth + 20
+    }
+
     private func updateResetButtons() {
-        resetActionButton.title = isResetConfirmationVisible ? "Cancel" : "Reset Everything"
+        resetActionButton.title = isResetConfirmationVisible ? "Cancel" : "Reset Settings"
+        resetActionButtonWidthConstraint?.constant = footerButtonWidth(for: resetActionButton.title)
+        resetConfirmButtonWidthConstraint?.constant = footerButtonWidth(for: resetConfirmButton.title)
         resetConfirmButton.isHidden = !isResetConfirmationVisible
     }
 
@@ -1179,7 +1220,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     init(overlayController: OverlayController) {
         let settingsViewController = SettingsViewController(overlayController: overlayController)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 552),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -1189,7 +1230,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = NSAppearance(named: .aqua)
         window.backgroundColor = SettingsStyle.windowBackground
         if #available(macOS 11.0, *) {
             window.titlebarSeparatorStyle = .none
@@ -1759,8 +1800,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeMenuBarImage() -> NSImage {
-        if let resourceURL = Bundle.main.url(
-            forResource: AppConstants.menuBarIconResourceName,
+        if let resourceURL = bundledResourceURL(
+            candidateNames: [AppConstants.menuBarIconResourceName, "menubarIcon_05lali_2"],
             withExtension: AppConstants.menuBarIconResourceExtension
         ),
            let image = NSImage(contentsOf: resourceURL) {
@@ -1809,16 +1850,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        let aboutItem = NSMenuItem(title: "About 05lali", action: #selector(openAbout), keyEquivalent: "")
-        aboutItem.target = self
-        menu.addItem(aboutItem)
-
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         let quitItem = NSMenuItem(title: "Quit 05lali", action: #selector(quitApp), keyEquivalent: "")
         quitItem.target = self
+        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
         menu.addItem(quitItem)
     }
 
@@ -1887,11 +1925,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let value = sender.representedObject as? Int else { return }
         overlayController.setColumns(value)
         rebuildMenu()
-    }
-
-    @objc private func openAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
     }
 
     @objc private func openSettings() {
